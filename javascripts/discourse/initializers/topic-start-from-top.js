@@ -2,9 +2,24 @@ import { withPluginApi } from "discourse/lib/plugin-api";
 import { throttle } from "@ember/runloop";
 
 function initializeTopicStartFromTop(api) {
-  const settings = api.container.lookup("service:site-settings");
+  let settings;
   
-  if (!settings.enable_topic_start_from_top) {
+  try {
+    // 安全地獲取 site-settings
+    if (api.container && api.container.lookup) {
+      settings = api.container.lookup("service:site-settings");
+    } else {
+      // 備用方案：直接從全局對象獲取
+      settings = window.SiteSettings || {};
+    }
+  } catch (error) {
+    console.warn("Topic Start From Top: Failed to get settings, using defaults:", error);
+    settings = {};
+  }
+  
+  // 如果設置未啟用，則退出（預設為啟用）
+  if (settings.enable_topic_start_from_top === false) {
+    console.log("Topic Start From Top: Disabled via settings");
     return;
   }
 
@@ -100,7 +115,13 @@ function initializeTopicStartFromTop(api) {
   function shouldApplyTopStart(url) {
     if (!/\/t\/[^\/]+\/\d+/.test(url)) return false;
     
-    const currentUser = api.getCurrentUser();
+    let currentUser;
+    try {
+      currentUser = api.getCurrentUser ? api.getCurrentUser() : null;
+    } catch (error) {
+      console.warn("Topic Start From Top: Failed to get current user:", error);
+      currentUser = null;
+    }
     
     if (settings.exclude_user_groups && settings.exclude_user_groups.length > 0 && currentUser) {
       const userGroups = currentUser.groups || [];
@@ -139,38 +160,10 @@ function initializeTopicStartFromTop(api) {
         return;
       }
 
-      // 使用 DiscourseURL 進行導航（Discourse 推薦方式）
-      const DiscourseURL = api.container.lookup('service:router').constructor.router.recognizer.constructor.DiscourseURL;
-      if (DiscourseURL && DiscourseURL.routeTo) {
-        console.log("Topic Start From Top: Using DiscourseURL.routeTo");
-        DiscourseURL.routeTo(url);
-        
-        // 確保滾動到頂部
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 300);
-        
-        return;
-      }
-
-      // 備用方案：使用 Discourse 路由器
-      const router = api.container.lookup('router:main');
-      if (router && router.transitionTo) {
-        console.log("Topic Start From Top: Using router.transitionTo");
-        const urlParts = url.match(/\/t\/([^\/]+)\/(\d+)/);
-        if (urlParts) {
-          const [, slug, id] = urlParts;
-          router.transitionTo('topic', { slug: slug, id: id });
-          
-          setTimeout(() => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }, 300);
-        }
-      } else {
-        // 最後備用方案：直接導航
-        console.log("Topic Start From Top: Using window.location.href");
-        window.location.href = url;
-      }
+      // 方案1：使用簡單的 window.location 導航（最可靠）
+      console.log("Topic Start From Top: Using window.location.href for navigation");
+      window.location.href = url;
+      
     } catch (error) {
       console.error('Topic Start From Top: Navigation error:', error);
       // 降級到簡單導航
