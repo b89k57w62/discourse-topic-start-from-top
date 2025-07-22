@@ -5,13 +5,32 @@ export default {
   
   initialize() {
     withPluginApi("0.11.1", (api) => {
-      const siteSettings = api.container.lookup("service:site-settings");
+      console.log("🚀 Topic Start From Top: Initializing plugin...");
+      
+      let siteSettings;
+      try {
+        siteSettings = api.container.lookup("service:site-settings");
+        console.log("📋 SiteSettings object:", siteSettings);
+        console.log("📋 All theme settings:", {
+          enable_topic_start_from_top: siteSettings.enable_topic_start_from_top,
+          exclude_user_groups: siteSettings.exclude_user_groups,
+          throttle_interval: siteSettings.throttle_interval
+        });
+        console.log("🔍 Type of enable_topic_start_from_top:", typeof siteSettings.enable_topic_start_from_top);
+        console.log("🔍 Value of enable_topic_start_from_top:", siteSettings.enable_topic_start_from_top);
+      } catch (error) {
+        console.error("❌ Failed to get site settings:", error);
+        return;
+      }
+      
       if (!siteSettings.enable_topic_start_from_top) {
-        console.log("Topic Start From Top: Disabled via settings");
+        console.log("❌ Topic Start From Top: Disabled via settings");
+        console.log("💡 To enable: Go to Admin → Customize → Themes → [Your Theme] → Settings");
+        console.log("💡 Then toggle 'Enable topic start from top' to ON");
         return;
       }
 
-      console.log("Topic Start From Top: Plugin initialized");
+      console.log("✅ Topic Start From Top: Plugin enabled and running!");
 
       if (api.registerLastUnreadUrlCallback) {
         api.registerLastUnreadUrlCallback(function(topicTrackingState, topic) {
