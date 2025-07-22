@@ -1,0 +1,9 @@
+{
+  "name": "discourse-topic-start-from-top",
+  "about_url": "https://github.com/your-username/discourse-topic-start-from-top",
+  "license_url": "https://github.com/your-username/discourse-topic-start-from-top/blob/main/LICENSE",
+  "authors": "Jeffrey",
+  "theme_version": "1.0.0",
+  "minimum_discourse_version": "2.8.0",
+  "component": true
+} 

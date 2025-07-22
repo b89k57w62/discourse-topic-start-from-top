@@ -1,0 +1,19 @@
+enable_topic_start_from_top:
+  type: bool
+  default: true
+  description: "Enable starting topics from top instead of last read position"
+
+apply_to_categories:
+  type: category_list
+  default: ""
+  description: "Apply only to specific categories (leave empty for all)"
+
+exclude_user_groups:
+  type: group_list
+  default: ""
+  description: "Exclude specific user groups from this behavior"
+
+throttle_interval:
+  type: integer
+  default: 300
+  description: "Throttle interval in milliseconds to prevent API overload" 
