@@ -1,15 +1,12 @@
 import { withPluginApi } from "discourse/lib/plugin-api";
-import { throttle } from "@ember/runloop";
 
 function initializeTopicStartFromTop(api) {
   let settings;
   
   try {
-    // 安全地獲取 site-settings
     if (api.container && api.container.lookup) {
       settings = api.container.lookup("service:site-settings");
     } else {
-      // 備用方案：直接從全局對象獲取
       settings = window.SiteSettings || {};
     }
   } catch (error) {
@@ -17,7 +14,6 @@ function initializeTopicStartFromTop(api) {
     settings = {};
   }
   
-  // 如果設置未啟用，則退出（預設為啟用）
   if (settings.enable_topic_start_from_top === false) {
     console.log("Topic Start From Top: Disabled via settings");
     return;
@@ -25,92 +21,104 @@ function initializeTopicStartFromTop(api) {
 
   console.log("Topic Start From Top: Initializing...");
 
-  const MIN_THROTTLE_INTERVAL = 1000;
-  const throttleInterval = Math.max(settings.throttle_interval || 1000, MIN_THROTTLE_INTERVAL);
-  
-  const processedUrls = new Set();
-  const urlCacheExpiry = 60000;
-  
-  setInterval(() => {
-    processedUrls.clear();
-  }, urlCacheExpiry);
-
-  // 使用更早的事件捕獲階段攔截點擊
-  document.addEventListener('click', function(event) {
-    // 查找最接近的 topic 連結
-    const link = event.target.closest('a[href*="/t/"]');
-    if (!link) return;
-    
-    const href = link.getAttribute('href');
-    console.log("Topic Start From Top: Detected link click:", href);
-    
-    if (!shouldApplyTopStart(href)) {
-      console.log("Topic Start From Top: Skipping link (not applicable):", href);
-      return;
-    }
-    
-    // 匹配 topic URL：/t/topic-slug/topic-id/post-number
-    const topicMatch = href.match(/\/t\/([^\/]+)\/(\d+)(?:\/(\d+))?/);
-    if (!topicMatch) {
-      console.log("Topic Start From Top: No topic match for:", href);
-      return;
-    }
-    
-    const [, slug, topicId, postNumber] = topicMatch;
-    console.log("Topic Start From Top: Parsed:", { slug, topicId, postNumber });
-    
-    // 創建乾淨的 topic URL（沒有 post number）
-    const cleanUrl = `/t/${slug}/${topicId}`;
-    
-    if (processedUrls.has(cleanUrl)) {
-      console.log("Topic Start From Top: Already processed:", cleanUrl);
-      return;
-    }
-    
-    // 攔截點擊事件
-    console.log("Topic Start From Top: Intercepting click, redirecting to:", cleanUrl);
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation(); // 阻止其他事件處理器
-    
-    processedUrls.add(cleanUrl);
-    
-    throttledNavigation(cleanUrl);
-  }, true); // 使用捕獲階段
-
-  // 也監聽冒泡階段作為備用
-  document.addEventListener('click', function(event) {
-    const link = event.target.closest('a[href*="/t/"].title');
-    if (!link) return;
-    
-    const href = link.getAttribute('href');
-    if (href && href.includes('/t/') && /\/\d+$/.test(href)) {
-      console.log("Topic Start From Top: Backup interception for:", href);
-      event.preventDefault();
-      event.stopPropagation();
-      
-      const cleanUrl = href.replace(/\/\d+$/, '');
-      throttledNavigation(cleanUrl);
-    }
-  }, false); // 冒泡階段
-
-  const throttledNavigation = throttle(function(url) {
-    console.log("Topic Start From Top: Performing navigation to:", url);
-    performTopNavigation(url);
-  }, throttleInterval);
-
-  // 覆蓋 Discourse 的最後未讀 URL 回調
+  // 方法1：覆蓋 lastUnreadUrl 回調，強制返回不帶 post number 的 URL
   if (api.registerLastUnreadUrlCallback) {
     console.log("Topic Start From Top: Registering last unread URL callback");
     api.registerLastUnreadUrlCallback(function(topicTrackingState, topic) {
       if (shouldApplyToTopic(topic)) {
         const cleanUrl = `/t/${topic.slug}/${topic.id}`;
-        console.log("Topic Start From Top: Callback returning clean URL:", cleanUrl);
+        console.log("Topic Start From Top: Forcing clean URL:", cleanUrl);
         return cleanUrl;
       }
       return null;
     });
   }
+
+  // 方法2：動態清理已渲染連結中的 post numbers
+  function cleanTopicLinks() {
+    const topicLinks = document.querySelectorAll('a[href*="/t/"]');
+    let cleanedCount = 0;
+    
+    topicLinks.forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || !shouldApplyTopStart(href)) return;
+      
+      // 匹配並移除 post number：/t/slug/id/postNumber -> /t/slug/id
+      const cleanHref = href.replace(/^(\/t\/[^\/]+\/\d+)\/\d+$/, '$1');
+      
+      if (cleanHref !== href) {
+        link.setAttribute('href', cleanHref);
+        cleanedCount++;
+        console.log(`Topic Start From Top: Cleaned link from ${href} to ${cleanHref}`);
+      }
+    });
+    
+    if (cleanedCount > 0) {
+      console.log(`Topic Start From Top: Cleaned ${cleanedCount} topic links`);
+    }
+  }
+
+  // 方法3：攔截 Discourse 的 URL 生成函數
+  try {
+    // 嘗試獲取並覆蓋 Discourse 的 topic URL 生成邏輯
+    const originalGenerateTopicUrl = window.Discourse?.getURL;
+    if (originalGenerateTopicUrl) {
+      window.Discourse.getURL = function(url) {
+        const result = originalGenerateTopicUrl.apply(this, arguments);
+        
+        // 如果是 topic URL 且包含 post number，移除它
+        if (result && result.includes('/t/') && shouldApplyTopStart(result)) {
+          const cleanResult = result.replace(/^(\/t\/[^\/]+\/\d+)\/\d+$/, '$1');
+          if (cleanResult !== result) {
+            console.log(`Topic Start From Top: Intercepted URL generation from ${result} to ${cleanResult}`);
+            return cleanResult;
+          }
+        }
+        
+        return result;
+      };
+    }
+  } catch (error) {
+    console.warn("Topic Start From Top: Could not intercept URL generation:", error);
+  }
+
+  // 初始清理
+  setTimeout(cleanTopicLinks, 500);
+
+  // 監聽 DOM 變化並清理新添加的連結
+  const observer = new MutationObserver(function(mutations) {
+    let shouldClean = false;
+    
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) { // Element node
+          // 檢查是否添加了包含 topic 連結的內容
+          if (node.querySelector && node.querySelector('a[href*="/t/"]')) {
+            shouldClean = true;
+          }
+          // 檢查節點本身是否為 topic 連結
+          if (node.tagName === 'A' && node.href && node.href.includes('/t/')) {
+            shouldClean = true;
+          }
+        }
+      });
+    });
+    
+    if (shouldClean) {
+      setTimeout(cleanTopicLinks, 100);
+    }
+  });
+
+  // 開始觀察 DOM 變化
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // 監聽路由變化
+  api.onPageChange(() => {
+    setTimeout(cleanTopicLinks, 200);
+  });
 
   function shouldApplyTopStart(url) {
     if (!/\/t\/[^\/]+\/\d+/.test(url)) return false;
@@ -119,7 +127,6 @@ function initializeTopicStartFromTop(api) {
     try {
       currentUser = api.getCurrentUser ? api.getCurrentUser() : null;
     } catch (error) {
-      console.warn("Topic Start From Top: Failed to get current user:", error);
       currentUser = null;
     }
     
@@ -142,33 +149,6 @@ function initializeTopicStartFromTop(api) {
   function shouldApplyToTopic(topic) {
     if (!topic || !topic.slug || !topic.id) return false;
     return shouldApplyTopStart(`/t/${topic.slug}/${topic.id}`);
-  }
-
-  function performTopNavigation(url) {
-    try {
-      console.log("Topic Start From Top: Starting navigation to:", url);
-      
-      // 檢查是否已經在目標頁面
-      const currentPath = window.location.pathname;
-      const targetPath = new URL(url, window.location.origin).pathname;
-      
-      if (currentPath === targetPath) {
-        console.log("Topic Start From Top: Already on target page, scrolling to top");
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 100);
-        return;
-      }
-
-      // 方案1：使用簡單的 window.location 導航（最可靠）
-      console.log("Topic Start From Top: Using window.location.href for navigation");
-      window.location.href = url;
-      
-    } catch (error) {
-      console.error('Topic Start From Top: Navigation error:', error);
-      // 降級到簡單導航
-      window.location.href = url;
-    }
   }
 }
 
