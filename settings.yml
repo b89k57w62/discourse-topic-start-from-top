@@ -10,5 +10,5 @@ exclude_user_groups:
 
 throttle_interval:
   type: integer
-  default: 300
-  description: "Throttle interval in milliseconds to prevent API overload" 
+  default: 1000
+  description: "Throttle interval in milliseconds (minimum 1000ms to prevent rate limiting)" 

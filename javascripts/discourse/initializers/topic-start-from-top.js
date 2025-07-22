@@ -8,27 +8,52 @@ function initializeTopicStartFromTop(api) {
     return;
   }
 
+  const MIN_THROTTLE_INTERVAL = 1000;
+  const throttleInterval = Math.max(settings.throttle_interval || 1000, MIN_THROTTLE_INTERVAL);
+  
+  const processedUrls = new Set();
+  const urlCacheExpiry = 60000;
+  
+  setInterval(() => {
+    processedUrls.clear();
+  }, urlCacheExpiry);
+
   const throttledNavigation = throttle(function(url, options = {}) {
     performTopNavigation(url, options);
-  }, settings.throttle_interval || 300);
+  }, throttleInterval);
 
   api.onPageChange((url, title) => {
+    if (processedUrls.has(url)) {
+      return;
+    }
+    
     if (shouldApplyTopStart(url)) {
       if (url.includes('#') && url.includes('/t/')) {
+        processedUrls.add(url);
         throttledNavigation(url);
       }
     }
   });
 
-  api.registerLastUnreadUrlCallback && api.registerLastUnreadUrlCallback(function(topicTrackingState, topic) {
-    if (shouldApplyToTopic(topic)) {
-      return `/t/${topic.slug}/${topic.id}`;
-    }
-    return null;
-  });
+  if (api.registerLastUnreadUrlCallback) {
+    api.registerLastUnreadUrlCallback(function(topicTrackingState, topic) {
+      if (shouldApplyToTopic(topic)) {
+        return `/t/${topic.slug}/${topic.id}`;
+      }
+      return null;
+    });
+  }
 
+  
+  let lastScrollTime = 0;
   api.onAppEvent("topic:current-post-changed", function(args) {
+    const now = Date.now();
+    if (now - lastScrollTime < throttleInterval) {
+      return;
+    }
+    
     if (shouldApplyTopStart(window.location.href)) {
+      lastScrollTime = now;
       setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }, 100);
@@ -36,7 +61,8 @@ function initializeTopicStartFromTop(api) {
   });
 
   function shouldApplyTopStart(url) {
-    if (!/\/t\//.test(url)) return false;
+    if (!url || typeof url !== 'string') return false;
+    if (!/\/t\/[^\/]+\/\d+/.test(url)) return false;
     
     const currentUser = api.getCurrentUser();
     
@@ -74,19 +100,21 @@ function initializeTopicStartFromTop(api) {
     try {
       const cleanUrl = url.split('#')[0];
       
-      const DiscourseURL = require("discourse/lib/url").default;
-      
-      if (window.location.pathname !== new URL(cleanUrl, window.location.origin).pathname) {
-        DiscourseURL.routeTo(cleanUrl);
+      if (window.location.pathname === new URL(cleanUrl, window.location.origin).pathname) {
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
+        return;
       }
       
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
+      const DiscourseURL = require("discourse/lib/url").default;
+      DiscourseURL.routeTo(cleanUrl);
       
     } catch (error) {
       console.warn("Topic Start From Top: Navigation failed", error);
-      window.location.href = url.split('#')[0];
+      if (error.status !== 429) {
+        window.location.href = url.split('#')[0];
+      }
     }
   }
 }
