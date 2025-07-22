@@ -3,6 +3,7 @@ import { throttle } from "@ember/runloop";
 
 function initializeTopicStartFromTop(api) {
   const settings = api.container.lookup("service:site-settings");
+  
   if (!settings.enable_topic_start_from_top) {
     return;
   }
@@ -27,7 +28,7 @@ function initializeTopicStartFromTop(api) {
   });
 
   api.onAppEvent("topic:current-post-changed", function(args) {
-    if (shouldApplyTopStart(window.location.href)) {    
+    if (shouldApplyTopStart(window.location.href)) {
       setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }, 100);
@@ -39,12 +40,11 @@ function initializeTopicStartFromTop(api) {
     
     const currentUser = api.getCurrentUser();
     
-    if (settings.apply_to_categories && settings.apply_to_categories.length > 0) {
-    }
-    
     if (settings.exclude_user_groups && settings.exclude_user_groups.length > 0 && currentUser) {
       const userGroups = currentUser.groups || [];
-      const excludedGroups = settings.exclude_user_groups.split('|');
+      const excludedGroups = Array.isArray(settings.exclude_user_groups)
+        ? settings.exclude_user_groups
+        : settings.exclude_user_groups.split('|').filter(Boolean);
       
       for (let group of userGroups) {
         if (excludedGroups.includes(group.name)) {

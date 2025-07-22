@@ -2,7 +2,6 @@ en:
   theme_metadata:
     settings:
       enable_topic_start_from_top: "Enable topic start from top"
-      apply_to_categories: "Apply to specific categories"
-      exclude_user_groups: "Exclude user groups"
+      exclude_user_groups: "Exclude user groups (group names separated by |)"
       throttle_interval: "API throttle interval (ms)"
     description: "Always start reading topics from the beginning instead of last read position" 

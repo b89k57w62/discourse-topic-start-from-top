@@ -17,6 +17,5 @@ A theme component designed for Discourse forums that modifies the default topic 
 After installation, configure the component in your theme settings:
 
 - **Enable topic start from top**: Toggle the functionality on/off
-- **Apply to categories**: Limit to specific categories (optional)
 - **Exclude user groups**: Exclude specific user groups (optional)
 - **Throttle interval**: API request throttling in milliseconds

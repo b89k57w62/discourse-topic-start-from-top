@@ -3,15 +3,10 @@ enable_topic_start_from_top:
   default: true
   description: "Enable starting topics from top instead of last read position"
 
-apply_to_categories:
-  type: category_list
-  default: ""
-  description: "Apply only to specific categories (leave empty for all)"
-
 exclude_user_groups:
-  type: group_list
+  type: list
   default: ""
-  description: "Exclude specific user groups from this behavior"
+  description: "Exclude specific user groups (enter group names separated by |)"
 
 throttle_interval:
   type: integer
