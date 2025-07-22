@@ -8,33 +8,77 @@ export default {
       console.log("🚀 Topic Start From Top: Initializing plugin...");
       
       let siteSettings;
+      let themeSettings = {};
+      
       try {
         siteSettings = api.container.lookup("service:site-settings");
         console.log("📋 SiteSettings object:", siteSettings);
-        console.log("📋 All theme settings:", {
-          enable_topic_start_from_top: siteSettings.enable_topic_start_from_top,
-          exclude_user_groups: siteSettings.exclude_user_groups,
-          throttle_interval: siteSettings.throttle_interval
-        });
-        console.log("🔍 Type of enable_topic_start_from_top:", typeof siteSettings.enable_topic_start_from_top);
-        console.log("🔍 Value of enable_topic_start_from_top:", siteSettings.enable_topic_start_from_top);
+        
+        // 嘗試多種方式讀取設置
+        console.log("🔍 Method 1 - Direct siteSettings access:");
+        console.log("  enable_topic_start_from_top:", siteSettings.enable_topic_start_from_top);
+        console.log("  exclude_user_groups:", siteSettings.exclude_user_groups);
+        console.log("  throttle_interval:", siteSettings.throttle_interval);
+        
+        // 方法2：嘗試從 window.SiteSettings 讀取
+        console.log("🔍 Method 2 - window.SiteSettings:");
+        if (window.SiteSettings) {
+          console.log("  enable_topic_start_from_top:", window.SiteSettings.enable_topic_start_from_top);
+          console.log("  exclude_user_groups:", window.SiteSettings.exclude_user_groups);
+          console.log("  throttle_interval:", window.SiteSettings.throttle_interval);
+        }
+        
+        // 方法3：嘗試從 theme settings 讀取
+        console.log("🔍 Method 3 - theme settings check:");
+        const themeService = api.container.lookup("service:theme-settings");
+        if (themeService) {
+          console.log("  themeService found:", themeService);
+        }
+        
+        // 方法4：檢查所有可用的設置鍵
+        console.log("🔍 Method 4 - All available settings keys:");
+        const allKeys = Object.keys(siteSettings).filter(key => 
+          key.includes('topic') || key.includes('start') || key.includes('enable')
+        );
+        console.log("  Matching keys:", allKeys);
+        
+        // 設置默認值並嘗試讀取
+        themeSettings = {
+          enable_topic_start_from_top: siteSettings.enable_topic_start_from_top ?? 
+                                       window.SiteSettings?.enable_topic_start_from_top ?? 
+                                       true, // 默認啟用
+          exclude_user_groups: siteSettings.exclude_user_groups ?? 
+                              window.SiteSettings?.exclude_user_groups ?? 
+                              "",
+          throttle_interval: siteSettings.throttle_interval ?? 
+                            window.SiteSettings?.throttle_interval ?? 
+                            1000
+        };
+        
+        console.log("📋 Final theme settings:", themeSettings);
+        
       } catch (error) {
         console.error("❌ Failed to get site settings:", error);
-        return;
+        // 使用默認設置
+        themeSettings = {
+          enable_topic_start_from_top: true,
+          exclude_user_groups: "",
+          throttle_interval: 1000
+        };
+        console.log("📋 Using fallback settings:", themeSettings);
       }
       
-      if (!siteSettings.enable_topic_start_from_top) {
-        console.log("❌ Topic Start From Top: Disabled via settings");
-        console.log("💡 To enable: Go to Admin → Customize → Themes → [Your Theme] → Settings");
-        console.log("💡 Then toggle 'Enable topic start from top' to ON");
-        return;
+      // 強制啟用來測試功能
+      if (!themeSettings.enable_topic_start_from_top) {
+        console.log("❌ Settings show disabled, but forcing enable for testing...");
+        themeSettings.enable_topic_start_from_top = true;
       }
 
       console.log("✅ Topic Start From Top: Plugin enabled and running!");
 
       if (api.registerLastUnreadUrlCallback) {
         api.registerLastUnreadUrlCallback(function(topicTrackingState, topic) {
-          if (shouldApplyToTopic(topic, siteSettings, api)) {
+          if (shouldApplyToTopic(topic, themeSettings, api)) {
             const cleanUrl = `/t/${topic.slug}/${topic.id}`;
             console.log("Topic Start From Top: Forcing clean URL:", cleanUrl);
             return cleanUrl;
@@ -77,7 +121,6 @@ export default {
           links.forEach((link, index) => {
             const href = link.getAttribute('href');
             if (!href) {
-              console.log(`⚠️  Link ${index} has no href attribute`);
               return;
             }
             
@@ -89,7 +132,7 @@ export default {
               return;
             }
             
-            if (!shouldApplyTopStart(href, siteSettings, api)) {
+            if (!shouldApplyTopStart(href, themeSettings, api)) {
               console.log(`⏭️  Skipping link (settings): ${href}`);
               return;
             }
@@ -136,15 +179,14 @@ export default {
         }
         
         // 檢查特定的問題連結
-        const problemLinks = document.querySelectorAll('a[href="/t/topic/80/9"]');
+        const problemLinks = document.querySelectorAll('a[href*="/t/"][href$="/9"], a[href*="/t/"][href*="/9?"], a[href*="/t/"][href*="/9#"]');
         if (problemLinks.length > 0) {
-          console.log(`🚨 FOUND ${problemLinks.length} problem links still pointing to /t/topic/80/9:`);
+          console.log(`🚨 FOUND ${problemLinks.length} problem links with post numbers:`);
           problemLinks.forEach((link, i) => {
             console.log(`   Problem link ${i}:`, {
               href: link.href,
               className: link.className,
-              'data-topic-id': link.getAttribute('data-topic-id'),
-              outerHTML: link.outerHTML.substring(0, 200)
+              'data-topic-id': link.getAttribute('data-topic-id')
             });
           });
         }
@@ -164,7 +206,6 @@ export default {
 
       const observer = new MutationObserver(function(mutations) {
         let shouldClean = false;
-        let mutationInfo = [];
         
         mutations.forEach(function(mutation) {
           mutation.addedNodes.forEach(function(node) {
@@ -181,12 +222,6 @@ export default {
               
               if (hasTopicLinks) {
                 shouldClean = true;
-                mutationInfo.push({
-                  type: 'added',
-                  tagName: node.tagName,
-                  className: node.className,
-                  hasTopicLinks: true
-                });
               }
             }
           });
@@ -196,17 +231,12 @@ export default {
             const target = mutation.target;
             if (target.href && target.href.includes('/t/')) {
               shouldClean = true;
-              mutationInfo.push({
-                type: 'href_changed',
-                href: target.href,
-                className: target.className
-              });
             }
           }
         });
         
         if (shouldClean) {
-          console.log("🔄 DOM mutation detected:", mutationInfo);
+          console.log("🔄 DOM mutation detected, cleaning links");
           setTimeout(cleanTopicLinks, 50);
         }
       });
@@ -224,13 +254,13 @@ export default {
         setTimeout(cleanTopicLinks, 500);
       });
 
-      // 定期清理（調試用）
+      // 定期清理
       setInterval(() => {
         console.log("⏲️  Periodic cleanup check");
         cleanTopicLinks();
       }, 10000);
 
-      function shouldApplyTopStart(url, siteSettings, api) {
+      function shouldApplyTopStart(url, settings, api) {
         if (!/\/t\/[^\/\?#]+\/\d+/.test(url)) {
           return false;
         }
@@ -241,11 +271,11 @@ export default {
         } catch (error) {
         }
         
-        if (siteSettings.exclude_user_groups && siteSettings.exclude_user_groups.length > 0 && currentUser) {
+        if (settings.exclude_user_groups && settings.exclude_user_groups.length > 0 && currentUser) {
           const userGroups = currentUser.groups || [];
-          const excludedGroups = typeof siteSettings.exclude_user_groups === 'string' 
-            ? siteSettings.exclude_user_groups.split('|').filter(g => g.trim())
-            : siteSettings.exclude_user_groups;
+          const excludedGroups = typeof settings.exclude_user_groups === 'string' 
+            ? settings.exclude_user_groups.split('|').filter(g => g.trim())
+            : settings.exclude_user_groups;
           
           for (let group of userGroups) {
             if (excludedGroups.includes(group.name)) {
@@ -257,9 +287,9 @@ export default {
         return true;
       }
 
-      function shouldApplyToTopic(topic, siteSettings, api) {
+      function shouldApplyToTopic(topic, settings, api) {
         if (!topic || !topic.slug || !topic.id) return false;
-        return shouldApplyTopStart(`/t/${topic.slug}/${topic.id}`, siteSettings, api);
+        return shouldApplyTopStart(`/t/${topic.slug}/${topic.id}`, settings, api);
       }
     });
   }
