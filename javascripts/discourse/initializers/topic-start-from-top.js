@@ -18,22 +18,34 @@ function initializeTopicStartFromTop(api) {
     processedUrls.clear();
   }, urlCacheExpiry);
 
-  const throttledNavigation = throttle(function(url, options = {}) {
-    performTopNavigation(url, options);
-  }, throttleInterval);
-
-  api.onPageChange((url, title) => {
-    if (processedUrls.has(url)) {
-      return;
-    }
+  document.addEventListener('click', function(event) {
+    const link = event.target.closest('a[href*="/t/"]');
+    if (!link) return;
     
-    if (shouldApplyTopStart(url)) {
-      if (url.includes('#') && url.includes('/t/')) {
-        processedUrls.add(url);
-        throttledNavigation(url);
-      }
-    }
-  });
+    const href = link.getAttribute('href');
+    if (!shouldApplyTopStart(href)) return;
+    
+    const topicMatch = href.match(/\/t\/([^\/]+)\/(\d+)(?:\/(\d+))?/);
+    if (!topicMatch) return;
+    
+    const [, slug, topicId, postNumber] = topicMatch;
+    
+    if (!postNumber || postNumber === '1') return;
+    
+    const cleanUrl = `/t/${slug}/${topicId}`;
+    if (processedUrls.has(cleanUrl)) return;
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    processedUrls.add(cleanUrl);
+    
+    throttledNavigation(cleanUrl);
+  }, true);
+
+  const throttledNavigation = throttle(function(url) {
+    performTopNavigation(url);
+  }, throttleInterval);
 
   if (api.registerLastUnreadUrlCallback) {
     api.registerLastUnreadUrlCallback(function(topicTrackingState, topic) {
@@ -43,22 +55,6 @@ function initializeTopicStartFromTop(api) {
       return null;
     });
   }
-
-  
-  let lastScrollTime = 0;
-  api.onAppEvent("topic:current-post-changed", function(args) {
-    const now = Date.now();
-    if (now - lastScrollTime < throttleInterval) {
-      return;
-    }
-    
-    if (shouldApplyTopStart(window.location.href)) {
-      lastScrollTime = now;
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
-    }
-  });
 
   function shouldApplyTopStart(url) {
     if (!url || typeof url !== 'string') return false;
@@ -96,24 +92,15 @@ function initializeTopicStartFromTop(api) {
     return true;
   }
 
-  function performTopNavigation(url, options = {}) {
+  function performTopNavigation(url) {
     try {
-      const cleanUrl = url.split('#')[0];
-      
-      if (window.location.pathname === new URL(cleanUrl, window.location.origin).pathname) {
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 100);
-        return;
-      }
-      
       const DiscourseURL = require("discourse/lib/url").default;
-      DiscourseURL.routeTo(cleanUrl);
+      DiscourseURL.routeTo(url);
       
     } catch (error) {
       console.warn("Topic Start From Top: Navigation failed", error);
       if (error.status !== 429) {
-        window.location.href = url.split('#')[0];
+        window.location.href = url;
       }
     }
   }
