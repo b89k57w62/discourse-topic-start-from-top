@@ -19,13 +19,13 @@ export default {
                               "",
           throttle_interval: siteSettings.throttle_interval ?? 
                             window.SiteSettings?.throttle_interval ?? 
-                            3000
+                            500
         };
       } catch (error) {
         themeSettings = {
           enable_topic_start_from_top: true,
           exclude_user_groups: "",
-          throttle_interval: 3000
+          throttle_interval: 500
         };
       }
       
